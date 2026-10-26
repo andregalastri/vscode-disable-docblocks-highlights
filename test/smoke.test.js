@@ -22,6 +22,12 @@ test('activation applies comment decorations to a remote PHP document', { timeou
         lineAt: function (line) { return { text: lines[line] }; }
     };
     const logs = [];
+    let documentChanged;
+    let outputLookups = 0;
+    const outputDocument = {
+        uri: { scheme: 'output', toString: function () { return 'output:Galastri DocBlocks'; } },
+        languageId: 'Log', version: 1, isClosed: false
+    };
     const context = { extension: { packageJSON: { version: 'test' } }, subscriptions: [] };
     let applied;
     const ready = new Promise(function (resolve) { applied = resolve; });
@@ -34,18 +40,24 @@ test('activation applies comment decorations to a remote PHP document', { timeou
     const vscode = {
         env: { remoteName: 'ssh-remote' },
         window: {
-            visibleTextEditors: [editor], activeTextEditor: editor,
-            createOutputChannel: function () { return { appendLine: function (s) { logs.push(s); }, dispose: function () {} }; },
+            visibleTextEditors: [editor, { document: outputDocument }], activeTextEditor: editor,
+            createOutputChannel: function () { return { appendLine: function (s) {
+                logs.push(s);
+                if (documentChanged) { documentChanged({ document: outputDocument, contentChanges: [] }); }
+            }, dispose: function () {} }; },
             createTextEditorDecorationType: function (style) { return { style: style, dispose: function () {} }; },
             onDidChangeVisibleTextEditors: noEvent, onDidChangeActiveTextEditor: noEvent,
             onDidChangeTextEditorVisibleRanges: noEvent, onDidChangeActiveColorTheme: noEvent
         },
         workspace: {
-            getConfiguration: function (section) { return { get: function (key, fallback) {
+            getConfiguration: function (section, resource) {
+                if (resource === outputDocument) { outputLookups++; }
+                return { get: function (key, fallback) {
                 if (section === 'workbench' && key === 'colorTheme') { return 'Fixture Theme'; }
                 return fallback;
             } }; },
-            onDidChangeTextDocument: noEvent, onDidCloseTextDocument: noEvent, onDidChangeConfiguration: noEvent
+            onDidChangeTextDocument: function (listener) { documentChanged = listener; return noEvent(); },
+            onDidCloseTextDocument: noEvent, onDidChangeConfiguration: noEvent
         },
         extensions: { onDidChange: noEvent, all: [{
             extensionPath: fixturePath,
@@ -76,6 +88,10 @@ test('activation applies comment decorations to a remote PHP document', { timeou
         assert.ok(result.ranges.some(function (range) { return range.start.line === 2 && range.end.character === lines[2].length; }));
         assert.ok(result.ranges.every(function (range) { return range.start.line !== 4; }));
         assert.ok(logs.some(function (s) { return s.includes('visible comment ranges='); }));
+        const count = logs.length;
+        await new Promise(function (resolve) { setTimeout(resolve, 250); });
+        assert.equal(outputLookups, 0, 'Output must never be processed as a source document');
+        assert.equal(logs.length, count, 'Writing diagnostics must not feed back into the Output channel');
     } finally {
         for (const subscription of context.subscriptions) { subscription.dispose(); }
     }

@@ -19,6 +19,11 @@ function activate(context) {
     let generation = 0;
     let disposed = false;
 
+    function isOutput(document) {
+        return ['output', 'log', 'vscode-output', 'vscode-log'].includes(document.uri.scheme) ||
+            document.languageId.toLowerCase() === 'log';
+    }
+
     function clearEditor(editor) {
         for (const decoration of decorations.values()) {
             editor.setDecorations(decoration, []);
@@ -50,6 +55,11 @@ function activate(context) {
     }
 
     function schedule(document) {
+        // Writing to our Output channel emits document/visibility events too.
+        if (isOutput(document)) {
+            return;
+        }
+
         const key = document.uri.toString();
         clearTimeout(timers.get(key));
         timers.set(key, setTimeout(function () {
@@ -59,7 +69,7 @@ function activate(context) {
     }
 
     async function update(document) {
-        if (disposed || document.isClosed) {
+        if (disposed || document.isClosed || isOutput(document)) {
             return;
         }
 
@@ -81,14 +91,20 @@ function activate(context) {
         const version = document.version;
         const currentGeneration = generation;
         const loaded = await grammars.load(document.languageId);
+
+        // Unsupported languages are expected; logging every event creates noise.
+        if (!loaded) {
+            editors.forEach(clearEditor);
+            return;
+        }
+
         const styles = await themes.load(document);
 
         if (isStale()) {
             return;
         }
 
-        if (!loaded || !styles) {
-            log('Skipped ' + document.languageId + ': grammar=' + Boolean(loaded) + ', theme=' + Boolean(styles));
+        if (!styles) {
             editors.forEach(clearEditor);
             return;
         }
