@@ -1,0 +1,58 @@
+{
+  "name": "vscode-disable-docblocks-highlights",
+  "displayName": "Galastri Disable DocBlocks Highlights",
+  "description": "Display documentation comments like ordinary comments, using the active theme automatically.",
+  "version": "0.1.0",
+  "publisher": "andregalastri",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/andregalastri/vscode-disable-docblocks-highlights.git"
+  },
+  "engines": { "vscode": "^1.90.0" },
+  "categories": ["Other"],
+  "keywords": ["docblock", "phpdoc", "jsdoc", "comments"],
+  "main": "./src/extension.js",
+  "extensionKind": ["ui"],
+  "activationEvents": ["onStartupFinished"],
+  "capabilities": {
+    "untrustedWorkspaces": { "supported": true },
+    "virtualWorkspaces": { "supported": true }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "disableDocblocksHighlights.toggle",
+        "title": "Galastri DocBlocks: Toggle Highlights Suppression"
+      }
+    ],
+    "configuration": {
+      "title": "Galastri Disable DocBlocks Highlights",
+      "properties": {
+        "disableDocblocksHighlights.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Display comments and DocBlocks uniformly, following the active theme's ordinary comment style."
+        },
+        "disableDocblocksHighlights.excludedLanguages": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Language IDs to leave unchanged, for example markdown or python."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "check": "node --check src/extension.js && node --check src/grammar-service.js && node --check src/theme.js && node --check src/comments.js",
+    "test": "node --test test/smoke.test.js",
+    "package:vsix": "node -e \"require('node:fs').mkdirSync('dist', { recursive: true })\" && vsce package --out dist/galastri-disable-docblocks-highlights.vsix",
+    "vscode:prepublish": "npm run check"
+  },
+  "dependencies": {
+    "jsonc-parser": "3.3.1",
+    "vscode-oniguruma": "2.0.1",
+    "vscode-textmate": "9.3.2"
+  },
+  "devDependencies": { "@vscode/vsce": "3.6.2" }
+}

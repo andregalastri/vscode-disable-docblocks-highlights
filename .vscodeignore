@@ -1,0 +1,11 @@
+.git/**
+.github/**
+test/**
+scripts/**
+dist/**
+**/*.vsix
+**/*.map
+package-lock.json
+.gitignore
+.vscodeignore
+
