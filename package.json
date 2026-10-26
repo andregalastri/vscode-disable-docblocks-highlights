@@ -2,7 +2,7 @@
   "name": "vscode-disable-docblocks-highlights",
   "displayName": "Galastri Disable DocBlocks Highlights",
   "description": "Display documentation comments like ordinary comments, using the active theme automatically.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "andregalastri",
   "license": "MIT",
   "repository": {
@@ -21,6 +21,10 @@
   },
   "contributes": {
     "commands": [
+      {
+        "command": "disableDocblocksHighlights.diagnose",
+        "title": "Galastri DocBlocks: Diagnose and Refresh"
+      },
       {
         "command": "disableDocblocksHighlights.toggle",
         "title": "Galastri DocBlocks: Toggle Highlights Suppression"

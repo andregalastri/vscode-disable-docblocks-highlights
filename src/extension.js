@@ -9,11 +9,13 @@ const { collectCommentSpans } = require('./comments');
 function activate(context) {
     const output = vscode.window.createOutputChannel('Galastri DocBlocks');
     const log = function (message) { output.appendLine(message); };
+    log('Galastri DocBlocks ' + context.extension.packageJSON.version + ' activated. Remote: ' + (vscode.env.remoteName || 'none'));
     let grammars = new GrammarService(vscode.extensions.all, log);
     let themes = new ThemeService(vscode, log);
     const documents = new Map();
     const decorations = new Map();
     const timers = new Map();
+    const reports = new Map();
     let generation = 0;
     let disposed = false;
 
@@ -26,6 +28,7 @@ function activate(context) {
     function reset() {
         generation++;
         documents.clear();
+        reports.clear();
 
         for (const timer of timers.values()) {
             clearTimeout(timer);
@@ -85,6 +88,7 @@ function activate(context) {
         }
 
         if (!loaded || !styles) {
+            log('Skipped ' + document.languageId + ': grammar=' + Boolean(loaded) + ', theme=' + Boolean(styles));
             editors.forEach(clearEditor);
             return;
         }
@@ -169,6 +173,20 @@ function activate(context) {
             for (const decoration of decorations.values()) {
                 editor.setDecorations(decoration, grouped.get(decoration) || []);
             }
+
+            const count = [...grouped.values()].reduce(function (sum, ranges) { return sum + ranges.length; }, 0);
+            const report = JSON.stringify({ version: version, count: count, styles: [...grouped.keys()].length });
+
+            if (reports.get(key) !== report) {
+                reports.set(key, report);
+                log(document.languageId + ': grammar=' + loaded.scope + ', visible comment ranges=' + count + ', styles=' + grouped.size);
+
+                for (const [styleKey, decoration] of decorations) {
+                    if (grouped.has(decoration)) {
+                        log('Comment style: ' + styleKey);
+                    }
+                }
+            }
         }
 
         function isStale() {
@@ -180,6 +198,9 @@ function activate(context) {
         output,
         vscode.window.onDidChangeVisibleTextEditors(function (editors) {
             editors.forEach(function (editor) { schedule(editor.document); });
+        }),
+        vscode.window.onDidChangeActiveTextEditor(function (editor) {
+            if (editor) { schedule(editor.document); }
         }),
         vscode.window.onDidChangeTextEditorVisibleRanges(function (event) { schedule(event.textEditor.document); }),
         vscode.workspace.onDidChangeTextDocument(function (event) {
@@ -217,6 +238,26 @@ function activate(context) {
         vscode.commands.registerCommand('disableDocblocksHighlights.toggle', async function () {
             const settings = vscode.workspace.getConfiguration('disableDocblocksHighlights');
             await settings.update('enabled', !settings.get('enabled', true), vscode.ConfigurationTarget.Global);
+        }),
+        vscode.commands.registerCommand('disableDocblocksHighlights.diagnose', async function () {
+            output.show(true);
+            const editor = vscode.window.activeTextEditor;
+
+            if (!editor) {
+                log('No active text editor.');
+                return;
+            }
+
+            const document = editor.document;
+            const settings = vscode.workspace.getConfiguration('disableDocblocksHighlights', document);
+            log('Diagnosis: version=' + context.extension.packageJSON.version + ', language=' + document.languageId +
+                ', scheme=' + document.uri.scheme + ', enabled=' + settings.get('enabled', true) +
+                ', excluded=' + JSON.stringify(settings.get('excludedLanguages', [])));
+            log('Theme: ' + vscode.workspace.getConfiguration('workbench').get('colorTheme'));
+            documents.delete(document.uri.toString());
+            reports.delete(document.uri.toString());
+            await update(document);
+            log('Diagnosis finished.');
         }),
         {
             dispose: function () {

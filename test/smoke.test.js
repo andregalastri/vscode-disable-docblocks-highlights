@@ -10,6 +10,77 @@ const { readTheme, CommentStyles, customizationRules } = require('../src/theme')
 
 const fixturePath = path.join(__dirname, 'fixtures');
 
+test('activation applies comment decorations to a remote PHP document', { timeout: 5000 }, async function () {
+    const fs = require('node:fs');
+    const vm = require('node:vm');
+    const createRequire = require('node:module').createRequire;
+    const noEvent = function () { return { dispose: function () {} }; };
+    const lines = ['<?php', '/**', ' * @param mixed $value', ' */', '$code = 42;'];
+    const document = {
+        uri: { scheme: 'vscode-remote', toString: function () { return 'vscode-remote://ssh-remote/test.php'; } },
+        languageId: 'php', version: 1, isClosed: false, lineCount: lines.length,
+        lineAt: function (line) { return { text: lines[line] }; }
+    };
+    const logs = [];
+    const context = { extension: { packageJSON: { version: 'test' } }, subscriptions: [] };
+    let applied;
+    const ready = new Promise(function (resolve) { applied = resolve; });
+    const editor = {
+        document: document, visibleRanges: [{ start: { line: 0 }, end: { line: 4 } }],
+        setDecorations: function (decoration, ranges) {
+            if (ranges.length) { applied({ style: decoration.style, ranges: ranges }); }
+        }
+    };
+    const vscode = {
+        env: { remoteName: 'ssh-remote' },
+        window: {
+            visibleTextEditors: [editor], activeTextEditor: editor,
+            createOutputChannel: function () { return { appendLine: function (s) { logs.push(s); }, dispose: function () {} }; },
+            createTextEditorDecorationType: function (style) { return { style: style, dispose: function () {} }; },
+            onDidChangeVisibleTextEditors: noEvent, onDidChangeActiveTextEditor: noEvent,
+            onDidChangeTextEditorVisibleRanges: noEvent, onDidChangeActiveColorTheme: noEvent
+        },
+        workspace: {
+            getConfiguration: function (section) { return { get: function (key, fallback) {
+                if (section === 'workbench' && key === 'colorTheme') { return 'Fixture Theme'; }
+                return fallback;
+            } }; },
+            onDidChangeTextDocument: noEvent, onDidCloseTextDocument: noEvent, onDidChangeConfiguration: noEvent
+        },
+        extensions: { onDidChange: noEvent, all: [{
+            extensionPath: fixturePath,
+            packageJSON: { contributes: {
+                grammars: [
+                    { language: 'php', scopeName: 'source.php', path: 'php.tmLanguage.json' },
+                    { language: 'php', scopeName: 'text.html.php', path: 'php-html.tmLanguage.json' }
+                ],
+                themes: [{ id: 'Fixture Theme', path: 'dark_plus.json' }]
+            } }
+        }] },
+        commands: { registerCommand: noEvent },
+        Range: function (line, start, endLine, end) { this.start = { line: line, character: start }; this.end = { line: endLine, character: end }; }
+    };
+    const filePath = path.resolve(__dirname, '../src/extension.js');
+    const localRequire = createRequire(filePath);
+    const module = { exports: {} };
+    const sandbox = { module: module, require: function (id) {
+        if (id === 'vscode') { return vscode; }
+        return localRequire(id);
+    }, setTimeout, clearTimeout, setImmediate, performance };
+
+    try {
+        vm.runInNewContext(fs.readFileSync(filePath, 'utf8'), sandbox, { filename: filePath });
+        module.exports.activate(context);
+        const result = await ready;
+        assert.equal(result.style.color.toUpperCase(), '#6A9955');
+        assert.ok(result.ranges.some(function (range) { return range.start.line === 2 && range.end.character === lines[2].length; }));
+        assert.ok(result.ranges.every(function (range) { return range.start.line !== 4; }));
+        assert.ok(logs.some(function (s) { return s.includes('visible comment ranges='); }));
+    } finally {
+        for (const subscription of context.subscriptions) { subscription.dispose(); }
+    }
+});
+
 test('real PHP and JavaScript grammars recognize documentation without touching strings or code', async function () {
     const service = new GrammarService([{
         extensionPath: fixturePath,
