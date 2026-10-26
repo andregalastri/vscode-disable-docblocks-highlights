@@ -108,20 +108,16 @@ function activate(context) {
 
         lastLine = Math.min(document.lineCount - 1, lastLine);
         let state = textmate.INITIAL;
+        let sliceStarted = performance.now();
 
         for (let line = 0; line <= lastLine; line++) {
             let entry = cached.lines[line];
 
             if (!entry) {
                 const content = document.lineAt(line).text;
-                const result = loaded.grammar.tokenizeLine(content, state, 20);
-
-                if (result.stoppedEarly) {
-                    log('Tokenization time limit reached; skipping decorations for ' + document.languageId + '.');
-                    documents.delete(key);
-                    editors.forEach(clearEditor);
-                    return;
-                }
+                // Complete each line so multiline comment state remains accurate.
+                // Cold PHP grammars can exceed 20 ms even on ordinary source lines.
+                const result = loaded.grammar.tokenizeLine(content, state);
 
                 entry = {
                     state: result.ruleStack,
@@ -132,12 +128,15 @@ function activate(context) {
 
             state = entry.state;
 
-            if (line % 200 === 199) {
+            // Yield between complete lines instead of abandoning the whole document.
+            if (performance.now() - sliceStarted >= 8) {
                 await new Promise(function (resolve) { setImmediate(resolve); });
 
                 if (isStale()) {
                     return;
                 }
+
+                sliceStarted = performance.now();
             }
         }
 
